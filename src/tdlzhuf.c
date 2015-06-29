@@ -51,6 +51,10 @@ In summary changes by WTK:
 #include <string.h>
 #include <ctype.h>
 
+#ifndef msdos
+#include <unistd.h>
+#endif
+
 /* WTK adds top level control structure to give Decode()
    a memory between calls
 */
@@ -485,7 +489,7 @@ short DecodePosition(int fp)
                      return(-1);
         i = (i << 1) + bit;
     }
-    return(c | i & 0x3f);
+    return(c | (i & 0x3f));
 }
 
 /* DeCompression 

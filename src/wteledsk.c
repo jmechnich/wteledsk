@@ -37,13 +37,16 @@
 
 */
 
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <malloc.h>
 #include <string.h> // define memset
 #ifdef MSDOS
 #include <io.h>         // for lseek
 #else
+#include <unistd.h>
 #define O_BINARY 0      // not defined for Linux gcc
 #define strnicmp strncasecmp
 #endif
@@ -70,11 +73,10 @@ typedef unsigned short WORD;
 
 #define SHSZ  6  // sector header size, this is base size, its variable
 
-#define DUMP 1  /* enable dump options, if defined you must supply
-                   your own dump routine per the prototype below
-                */
+//#define DUMP 1  // enable dump options, if defined you must supply
+                // your own dump routine per the prototype below
 
-extern dump(FILE *fp,unsigned char *buf,unsigned len,unsigned adr);
+extern int dump(FILE *fp,unsigned char *buf,unsigned len,unsigned adr);
 
 // force big stack was getting overflow if redirected output
 
@@ -178,7 +180,7 @@ struct rep_rec {
 #define BLKSZMSK 0x7 // low order 3 bits, only expect to use 2 of them
 
 
-block_size(ctl)
+int block_size(ctl)
 {
     int j,sz=128;
     j = ctl & BLKSZMSK;
@@ -189,7 +191,24 @@ block_size(ctl)
 
 unsigned char docomp = 0; // global flag set to 1 if advanced compression
 
-cread(int fp,void *buf,int len)
+#ifdef DCOMP
+extern int Decode(unsigned char *buf,int len);
+extern void init_Decode(int fp);
+#else
+// dummy decompression to satisfy linker
+int Decode(unsigned char *buf,int len)
+{
+    printf("\nfatal error decompression not supported in this version\n");
+    exit(-1);
+}
+#endif
+
+#ifdef DCRC
+extern unsigned short do_crc(unsigned char *b, unsigned short len);
+extern void updt_crc(unsigned short *crc,unsigned char *b, unsigned short len);
+#endif
+
+int cread(int fp,void *buf,int len)
 {
     int ret;
     if(docomp)
@@ -204,14 +223,6 @@ cread(int fp,void *buf,int len)
 
 #ifdef DCOMP
 #define read  cread  // redefine read
-
-#else
-// dummy decompression to satisfy linker
-int Decode(unsigned char *buf,int len)
-{
-    printf("\nfatal error decompression not supported in this version");
-    exit(-1);
-}
 #endif
 
 // append data to sbuf
@@ -224,7 +235,7 @@ unsigned ctl)
     char buf[20];
     struct pat_rec  *prec = (struct pat_rec *)buf;
 
-    int suc=0,i,j,npat,rd,blksz;
+    int suc=0,i=0,j=0,npat=0,rd=0,blksz=0;
     blksz = block_size(ctl);
     while(suc == 0 && *off < blksz)
     {
@@ -281,7 +292,7 @@ BYTE *sbuf,
 int sec,   // current sector #
 WORD *ctl)
 {
-    BYTE ch,*cptr,buf[30]; // biggest record I've seen is 15 bytes
+    BYTE *cptr,buf[30]; // biggest record I've seen is 15 bytes
     struct sec_rec *psec=(struct sec_rec *) buf;
     struct rep_rec *rbuf = (struct rep_rec *) (buf+sizeof(struct sec_rec));
     // if it exists the rep_rec immediately follows a full sec_rec when sec_rec.flag=1
@@ -369,8 +380,8 @@ WORD *ctl)
     {
          // don't really understand this one, seems to work with this fudge
          // should it be a NUL sector?
-         psec->unknwn[0] = psec->unknwn[2] =0;
-         psec->unknwn[1] =5;
+         psec->unknwn[0] = 0;
+         psec->unknwn[1] = 5;
          psec->flag = 1; //fake a skipped record type
     }
     if(suc != 0)
@@ -463,19 +474,20 @@ WORD *ctl)
 
 
 // advance over skipped blocks if writing output
-write_skip(int fo,int skipped,int blksz,int trkcnt)
+int write_skip(int fo,int skipped,int blksz,int trkcnt)
 {
      char skip_msg[25];
      long offset,fpos;
-     int rd,suc;
+     int rd=0,suc=0;
      offset = (long)blksz * skipped -16;
-     sprintf(skip_msg,"Skip %2d blocks ",skipped); 
+     sprintf(skip_msg,"Skip %2d blocks ",skipped);
      if(((rd=write(fo,skip_msg,16)) != 16 ||
         (fpos = lseek(fo,offset,SEEK_CUR)) < 0L))
      {
          printf("\nfatal seek error skipping %d block(s)",skipped);
          suc = -1;
      }
+     
      return(suc);
 }
 
@@ -485,7 +497,7 @@ write_skip(int fo,int skipped,int blksz,int trkcnt)
    The pro\wps?.td0 images do a lot of this.  I added
    some logic in main to see how often skipped sectors are rewritten
 */
-write_repeat(int fo,unsigned char *buf,int blksz,int csec,int rsec)
+int write_repeat(int fo,unsigned char *buf,int blksz,int csec,int rsec)
 {
     long fpos=0,rpos=0,off;
     int rd=0,suc=1;
@@ -506,15 +518,18 @@ char *mons[] = {"Jan","Feb","Mar","April","May","June","July",
 
 #define MAXSEC 20 // size of array to see which sectors in a track written
 
-main(int argc,char *argv[])
+int main(int argc,char *argv[])
 {
-    int cnt,csec,fd=EOF,fo=EOF,rd,i=-1,tnul = 0,nnul = 0,suc=-1,seccnt=0,trkcnt=0;
-    int blksz,skip_cnt,rept_cnt,max_sec=0;
-    int skipped,repeated,ovrwrite=0,tot_rept=0,tot_skip=0;
-    WORD ctl=0,crc;
-    long flen,bloc;
-    BYTE drvb,lch,*mblock,*block,written[MAXSEC+1];
-    char *cptr,drive;
+    int cnt=0,csec=0,fd=EOF,fo=EOF,rd,i=-1,tnul = 0,nnul = 0,suc=-1,seccnt=0,trkcnt=0;
+    int blksz=0,skip_cnt=0,rept_cnt=0,max_sec=0;
+    int skipped=0,ovrwrite=0,tot_rept=0,tot_skip=0;
+    WORD ctl=0;
+#ifdef DCRC
+    WORD crc=0;
+#endif
+    long flen=0,bloc=0;
+    BYTE drvb=0,*block=0,written[MAXSEC+1]={0};
+    char drive=0;
     struct file_head fh_buf,*fhead=&fh_buf;
     struct com_head  ch_buf,*chead=&ch_buf;
     struct track_rec trk;
@@ -606,7 +621,7 @@ main(int argc,char *argv[])
 
              init_Decode(fd); // initialize decompression routine
 #else
-             printf("\nthis file not supported, it uses advanced compression");
+             printf("\nthis file not supported, it uses advanced compression\n");
              exit(0);
 #endif
         }
@@ -639,7 +654,11 @@ main(int argc,char *argv[])
             else
                 rd = 0;
 
-            if(rd != 0) exit(1);  // one of fatal errors above
+            if(rd != 0)
+            {
+              if(block) free(block);
+              exit(1);  // one of fatal errors above
+            }
 
 #ifdef DCRC
             // check all but 1st 2 bytes of comment region
@@ -654,7 +673,6 @@ main(int argc,char *argv[])
              dump(stdout,(BYTE *)chead,sizeof(struct com_head),sizeof(struct file_head)); // chead
         // we just printed comment, don't bother to dump
 #endif
-            lch = 1;
             putchar('\n');
             // this includes old logic that coounted # of NULs 
             // convert each NUL to CR\LR
@@ -672,7 +690,6 @@ main(int argc,char *argv[])
                      putchar(block[i]);
                      nnul = 0;  // clear consecutive NUL count
                  }
-                 lch = block[i]; // save last char, two NUL terminates
             }
             printf("\ncreated %s %02d, %4d  %02d:%02d:%02d",
                  mons[chead->mon],chead->day,chead->yr+1900,
@@ -891,6 +908,7 @@ main(int argc,char *argv[])
 	     
     }
     putchar('\n'); // make linux output a little prettier
+    if(block) free(block);
+    
+    return 0;
 }
-
-
