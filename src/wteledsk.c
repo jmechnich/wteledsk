@@ -47,7 +47,9 @@
 #include <io.h>         // for lseek
 #else
 #include <unistd.h>
+#ifndef O_BINARY
 #define O_BINARY 0      // not defined for Linux gcc
+#endif
 #define strnicmp strncasecmp
 #endif
 #include <sys/types.h>
@@ -180,7 +182,7 @@ struct rep_rec {
 #define BLKSZMSK 0x7 // low order 3 bits, only expect to use 2 of them
 
 
-int block_size(ctl)
+int block_size(unsigned ctl)
 {
     int j,sz=128;
     j = ctl & BLKSZMSK;
@@ -706,7 +708,7 @@ int main(int argc,char *argv[])
 
     }
     else if(rd >= 0x10)
-         printf("\ninvalid id %2.2s",block);
+         printf("\ninvalid id %2.2s", (char*) fhead);
     else
          printf("\nread error, header not long enough");
     adr = sizeof(struct file_head); // set track data to start after fhead
