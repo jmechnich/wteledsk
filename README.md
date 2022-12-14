@@ -2,7 +2,7 @@
 converts teledisk to raw images
 
 ### About
-wteledsk was originally written by [Will Kranz](http://www.willsworks.net/) for reading Sydex Teledisk images from vintage computers. For more details see [here](http://www.willsworks.net/wteledsk.htm).
+wteledsk was originally written by [Will Kranz](http://www.willsworks.net/) for reading Sydex Teledisk images from vintage computers. For more details see [here](http://www.willsworks.net/file-format/teledisk).
 
 The image format was used as well to make images from non-standard floppy disks used in electronic music equipment, such as the AKAI S1000 sampler, or e.g. the General Music S2/3 Music Processor. This software has been used successfully with floppy images of the latter.
 
