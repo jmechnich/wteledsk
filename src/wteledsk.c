@@ -41,7 +41,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <malloc.h>
 #include <string.h> // define memset
 #ifdef MSDOS
 #include <io.h>         // for lseek
